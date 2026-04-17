@@ -1,0 +1,229 @@
+# The default reusable workflow for 0xPolygon Solidity repos. Every
+# Solidity repo calls this via a thin stub. Improvements here ship to
+# every repo on its next PR (after dev → main).
+#
+# Prompts live alongside this file and are read from the central repo
+# at runtime via a second checkout.
+
+name: AI Review (default)
+
+on:
+  workflow_call:
+    inputs:
+      foundry-version:
+        description: "Foundry release tag, or 'nightly'"
+        type: string
+        default: "nightly"
+      install-soldeer:
+        description: "Run `forge soldeer install` before review"
+        type: boolean
+        default: true
+      claude-model:
+        description: "Claude model identifier (passed as --model in claude_args)"
+        type: string
+        default: "claude-opus-4.7"
+      codex-model:
+        description: "Codex model identifier"
+        type: string
+        default: "gpt-5.3-codex"
+      run-claude:
+        description: "Enable the Claude reviewer"
+        type: boolean
+        default: true
+      run-codex:
+        description: "Enable the Codex reviewer"
+        type: boolean
+        default: true
+    secrets:
+      CLAUDE_API_KEY:
+        required: false # required only when run-claude is true
+      OPENAI_API_KEY:
+        required: false # required only when run-codex is true
+
+concurrency:
+  group: ai-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  # 1. Claude Opus security review (fires on every PR)
+  #    Posts: inline comments for 🔴/🟡 + PR-level summary.
+  # ────────────────────────────────────────────────────────────────
+  claude-review:
+    name: Claude security review
+    if: github.event_name == 'pull_request' && inputs.run-claude
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout consuming repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Checkout central repo (for prompts)
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygon/smart-contracts-agentic-review
+          ref: main
+          path: .ai-review
+
+      - name: Load Claude prompt
+        id: prompt
+        run: |
+          {
+            echo 'content<<AI_REVIEW_PROMPT_EOF'
+            cat .ai-review/.github/workflows/default/CLAUDE_PROMPT.md
+            echo 'AI_REVIEW_PROMPT_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ inputs.foundry-version }}
+
+      - name: Install Soldeer dependencies
+        if: inputs.install-soldeer
+        run: forge soldeer install
+
+      - name: Run Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_API_KEY }}
+          prompt: ${{ steps.prompt.outputs.content }}
+          track_progress: true
+          claude_args: |
+            --model ${{ inputs.claude-model }}
+            --max-turns 20
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(forge build),Bash(forge test*),Bash(forge snapshot*),Bash(forge coverage*),Bash(forge inspect*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(cat CLAUDE.md),Bash(cat AGENTS.md),Bash(cat README.md),Bash(find * -name CLAUDE.md),Bash(find * -name AGENTS.md),Read,Glob,Grep"
+
+  # ────────────────────────────────────────────────────────────────
+  # 2. Codex automated review (fires on every PR)
+  #    Posts: single PR-level summary comment.
+  # ────────────────────────────────────────────────────────────────
+  codex-review:
+    name: Codex review
+    if: github.event_name == 'pull_request' && inputs.run-codex
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout consuming repo (PR merge ref)
+        uses: actions/checkout@v5
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Pre-fetch base and head refs
+        run: |
+          git fetch --no-tags origin \
+            "${{ github.event.pull_request.base.ref }}" \
+            "+refs/pull/${{ github.event.pull_request.number }}/head"
+
+      - name: Checkout central repo (for prompts)
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygon/smart-contracts-agentic-review
+          ref: main
+          path: .ai-review
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ inputs.foundry-version }}
+
+      - name: Install Soldeer dependencies
+        if: inputs.install-soldeer
+        run: forge soldeer install
+
+      - name: Run Codex
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          model: ${{ inputs.codex-model }}
+          safety-strategy: read-only
+          prompt-file: .ai-review/.github/workflows/default/CODEX_PROMPT.md
+
+      - name: Post Codex review
+        if: steps.codex.outputs.final-message != ''
+        uses: actions/github-script@v7
+        env:
+          REVIEW_BODY: ${{ steps.codex.outputs.final-message }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MODEL: ${{ inputs.codex-model }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const baseShort = process.env.BASE_SHA.slice(0, 7);
+            const headShort = process.env.HEAD_SHA.slice(0, 7);
+            const body = [
+              '## 🤖 Codex review',
+              '',
+              `_Model: \`${process.env.MODEL}\` · base \`${baseShort}\` → head \`${headShort}\`_`,
+              '',
+              process.env.REVIEW_BODY,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
+
+  # ────────────────────────────────────────────────────────────────
+  # 3. Interactive @claude assistant (read-only, fires on @claude)
+  #    Gated to org members / collaborators.
+  # ────────────────────────────────────────────────────────────────
+  claude-assistant:
+    name: Claude assistant
+    if: |
+      inputs.run-claude && (
+        (github.event_name == 'issue_comment'
+          && contains(github.event.comment.body, '@claude')
+          && github.event.issue.pull_request != null
+          && contains(fromJson('["MEMBER","OWNER","COLLABORATOR"]'), github.event.comment.author_association))
+        || (github.event_name == 'pull_request_review_comment'
+          && contains(github.event.comment.body, '@claude')
+          && contains(fromJson('["MEMBER","OWNER","COLLABORATOR"]'), github.event.comment.author_association))
+        || (github.event_name == 'pull_request_review'
+          && contains(github.event.review.body, '@claude')
+          && contains(fromJson('["MEMBER","OWNER","COLLABORATOR"]'), github.event.review.author_association))
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout consuming repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: ${{ inputs.foundry-version }}
+
+      - name: Install Soldeer dependencies
+        if: inputs.install-soldeer
+        run: forge soldeer install
+
+      - name: Run Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_API_KEY }}
+          claude_args: |
+            --model ${{ inputs.claude-model }}
+            --max-turns 20
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(forge build),Bash(forge test*),Bash(forge snapshot*),Bash(forge coverage*),Bash(forge inspect*),Bash(git diff*),Bash(git log*),Bash(git show*),Read,Glob,Grep"
