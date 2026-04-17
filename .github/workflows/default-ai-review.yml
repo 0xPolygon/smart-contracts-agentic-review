@@ -2,8 +2,9 @@
 # Solidity repo calls this via a thin stub. Improvements here ship to
 # every repo on its next PR (after dev → main).
 #
-# Prompts live alongside this file and are read from the central repo
-# at runtime via a second checkout.
+# Prompt sets live under prompts/<profile>/ and the profile is derived
+# from the workflow filename prefix (for example, default-ai-review.yml
+# loads prompts/default/).
 
 name: AI Review (default)
 
@@ -72,12 +73,21 @@ jobs:
           ref: main
           path: .ai-review
 
+      - name: Resolve prompt directory
+        id: prompt-dir
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          workflow_file="$(basename "${WORKFLOW_REF%@*}")"
+          prompt_profile="${workflow_file%%-*}"
+          echo "prompt_dir=.ai-review/prompts/${prompt_profile}" >> "$GITHUB_OUTPUT"
+
       - name: Load Claude prompt
         id: prompt
         run: |
           {
             echo 'content<<AI_REVIEW_PROMPT_EOF'
-            cat .ai-review/.github/workflows/default/CLAUDE_PROMPT.md
+            cat "${{ steps.prompt-dir.outputs.prompt_dir }}/CLAUDE_PROMPT.md"
             echo 'AI_REVIEW_PROMPT_EOF'
           } >> "$GITHUB_OUTPUT"
 
@@ -133,6 +143,15 @@ jobs:
           ref: main
           path: .ai-review
 
+      - name: Resolve prompt directory
+        id: prompt-dir
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          workflow_file="$(basename "${WORKFLOW_REF%@*}")"
+          prompt_profile="${workflow_file%%-*}"
+          echo "prompt_dir=.ai-review/prompts/${prompt_profile}" >> "$GITHUB_OUTPUT"
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
@@ -149,7 +168,7 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: ${{ inputs.codex-model }}
           safety-strategy: read-only
-          prompt-file: .ai-review/.github/workflows/default/CODEX_PROMPT.md
+          prompt-file: ${{ steps.prompt-dir.outputs.prompt_dir }}/CODEX_PROMPT.md
 
       - name: Post Codex review
         if: steps.codex.outputs.final-message != ''
