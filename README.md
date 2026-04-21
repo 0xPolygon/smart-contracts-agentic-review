@@ -16,7 +16,7 @@ On every PR opened in a consuming repo:
 
 Additionally, any team member can write `@claude <question>` in a PR
 comment or review to get an interactive, read-only response from
-Claude with full `forge`/`git`/`gh` access.
+Claude with full `forge` / `git` / `gh` access.
 
 Both agents run **read-only** — they cannot push commits or modify
 the repo. Codex is fire-once per PR (no `@codex` interactivity in
@@ -47,10 +47,10 @@ under `prompts/`.
 
 ## How a consuming repo uses this
 
-Drop this stub at `.github/workflows/agentic-review-stub.yml`:
+Drop this stub at `.github/workflows/ai-review-stub.yml`:
 
 ```yaml
-name: Agentic Review Stub
+name: AI Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -107,8 +107,8 @@ stub changes `.../default.yml@main` to `.../audit.yml@main`.
 
 ### Testing changes before merge
 
-Before merging `dev` → `main`, point one consuming repo's stub at your
-branch temporarily:
+Before merging `dev` → `main`, point one consuming repo's stub at
+your branch temporarily:
 
 ```yaml
 uses: 0xPolygon/smart-contracts-agentic-review/.github/workflows/default.yml@my-feature-branch
@@ -125,8 +125,8 @@ Open a test PR there, verify, revert the stub change, merge
 2. Create `.github/workflows/<profile-name>.yml`. Start by copying
    `default.yml`. Change the `env.PROFILE` value at the top of the
    file to `<profile-name>`. Change the Codex `prompt-file` path
-   (which is currently hardcoded) to
-   `.agentic-review/prompts/<profile-name>/CODEX_PROMPT.md`.
+   and the Claude `--append-system-prompt-file` path to point at the
+   new profile's prompts.
 3. Update the workflow's `name:` field to reflect the profile.
 4. Consuming repos that want the new profile change their stub's
    `uses:` to point at `<profile-name>.yml` instead of `default.yml`.
@@ -139,6 +139,21 @@ when reusable-workflow access is enabled — the token only authorizes
 calling the workflow, not cloning the repo. Keeping this repo public
 is the simplest fix and avoids a GitHub App / PAT detour. The
 content (workflow scaffolding + prompts) is not sensitive.
+
+## Prompt delivery mechanism
+
+Prompts are delivered to the agents **by file path**, never as
+inline strings:
+
+- **Claude Code** accepts `--append-system-prompt-file <path>` in
+  `claude_args`. The CLI reads the file itself.
+- **Codex action** accepts a `prompt-file` input that takes a
+  repository-relative path.
+
+This sidesteps the fragile pattern of reading a file into a bash
+variable and passing it through `$GITHUB_OUTPUT`, which fails when
+prompt content happens to match the heredoc delimiter or contains
+sequences the GitHub runner interprets specially.
 
 ## Secrets
 
