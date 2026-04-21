@@ -2,11 +2,11 @@
 # Solidity repo calls this via a thin stub. Improvements here ship to
 # every repo on its next PR (after dev → main).
 #
-# Prompt sets live under prompts/<profile>/ and the profile is derived
-# from the workflow filename prefix (for example, default-ai-review.yml
-# loads prompts/default/).
+# Prompts for this profile live in prompts/default/ in this repo.
+# A future specialized profile would be a new <profile>.yml file
+# here plus a new prompts/<profile>/ directory.
 
-name: AI Review (default)
+name: Agentic Review (default)
 
 on:
   workflow_call:
@@ -41,8 +41,14 @@ on:
       OPENAI_API_KEY:
         required: false # required only when run-codex is true
 
+# Hardcoded profile — must match the prompts/<PROFILE>/ directory this
+# workflow reads from. When adding new profile workflows (audit.yml,
+# etc.), give them their own PROFILE value at the env or step level.
+env:
+  PROFILE: default
+
 concurrency:
-  group: ai-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: agentic-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -71,23 +77,14 @@ jobs:
         with:
           repository: 0xPolygon/smart-contracts-agentic-review
           ref: main
-          path: .ai-review
-
-      - name: Resolve prompt directory
-        id: prompt-dir
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          workflow_file="$(basename "${WORKFLOW_REF%@*}")"
-          prompt_profile="${workflow_file%%-*}"
-          echo "prompt_dir=.ai-review/prompts/${prompt_profile}" >> "$GITHUB_OUTPUT"
+          path: .agentic-review
 
       - name: Load Claude prompt
         id: prompt
         run: |
           {
             echo 'content<<AI_REVIEW_PROMPT_EOF'
-            cat "${{ steps.prompt-dir.outputs.prompt_dir }}/CLAUDE_PROMPT.md"
+            cat ".agentic-review/prompts/${PROFILE}/CLAUDE_PROMPT.md"
             echo 'AI_REVIEW_PROMPT_EOF'
           } >> "$GITHUB_OUTPUT"
 
@@ -141,16 +138,7 @@ jobs:
         with:
           repository: 0xPolygon/smart-contracts-agentic-review
           ref: main
-          path: .ai-review
-
-      - name: Resolve prompt directory
-        id: prompt-dir
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          workflow_file="$(basename "${WORKFLOW_REF%@*}")"
-          prompt_profile="${workflow_file%%-*}"
-          echo "prompt_dir=.ai-review/prompts/${prompt_profile}" >> "$GITHUB_OUTPUT"
+          path: .agentic-review
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
@@ -168,7 +156,7 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: ${{ inputs.codex-model }}
           safety-strategy: read-only
-          prompt-file: ${{ steps.prompt-dir.outputs.prompt_dir }}/CODEX_PROMPT.md
+          prompt-file: .agentic-review/prompts/default/CODEX_PROMPT.md
 
       - name: Post Codex review
         if: steps.codex.outputs.final-message != ''

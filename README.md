@@ -1,37 +1,56 @@
-# smart-contracts-agentic-review
+# Smart Contracts Agentic Review
 
 Centralized agentic PR review for Solidity / Foundry repositories in
-0xPolygon. Every Solidity repo in the org calls a workflow here via a
-thin stub. Improvements here ship to every repo on its next PR.
+the 0xPolygon organization. Every Solidity repo calls a workflow here
+via a thin stub. Improvements here ship to every repo on its next PR.
 
-## What's in here
+On every PR opened in a consuming repo:
 
-Each setup is a self-contained folder under `.github/workflows/`:
+1. **Claude Opus 4.7** runs a deep security and gas review. Posts
+   inline comments on specific diff lines for 🔴/🟡 findings, plus a
+   PR-level summary with build/test status, severity counts, and
+   🟢/📝/⛽ sections.
+2. **GPT-5.3-Codex** runs an independent diff-focused review in
+   parallel. Posts a single PR-level summary comment with P0/P1
+   findings and `path/File.sol:LINE` citations.
 
-- `.github/workflows/default/` — the default generic Solidity review
-  - `ai-review.yml` — the reusable workflow (`workflow_call`)
-  - `CLAUDE_PROMPT.md` — Claude's review prompt
-  - `CODEX_PROMPT.md` — Codex's review prompt
+Additionally, any team member can write `@claude <question>` in a PR
+comment or review to get an interactive, read-only response from
+Claude with full `forge`/`git`/`gh` access.
 
-Specialized setups (ZK circuits, audits, specific protocols, etc.) can
-be added as sibling folders. Each has its own `ai-review.yml` plus its
-own prompts.
+Both agents run **read-only** — they cannot push commits or modify
+the repo. Codex is fire-once per PR (no `@codex` interactivity in
+this setup).
 
-## What's intentionally NOT in here
+## Repository structure
 
-`CLAUDE.md` / `AGENTS.md` / `README.md` templates are **not** part of
-this setup. Those files are per-repo repository context — they belong
-in each consuming repo for local Claude sessions, human onboarding,
-and auditor context. The prompts instruct the review agents to read
-them if they exist, but the centralized CI doesn't own them.
+```
+smart-contracts-agentic-review/
+├── README.md
+├── .github/workflows/
+│   └── default.yml                 ← reusable workflow for the default profile
+└── prompts/
+    └── default/                    ← prompts for the default profile
+        ├── CLAUDE_PROMPT.md
+        └── CODEX_PROMPT.md
+```
 
-## How a Solidity repo gets wired up
+Each **profile** is a pair consisting of a workflow file
+(`.github/workflows/<profile>.yml`) and a prompts directory
+(`prompts/<profile>/`). The workflow file hardcodes which profile it
+uses via the top-level `env.PROFILE`.
 
-Drop this stub at `.github/workflows/ai-review-stub.yml` in the
-consuming repo:
+GitHub Actions only discovers workflow files at the top level of
+`.github/workflows/`, so workflow files cannot be nested into
+subfolders. Prompt directories, however, are free to be organized
+under `prompts/`.
+
+## How a consuming repo uses this
+
+Drop this stub at `.github/workflows/agentic-review-stub.yml`:
 
 ```yaml
-name: AI Review
+name: Agentic Review Stub
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -43,7 +62,7 @@ on:
     types: [submitted]
 jobs:
   review:
-    uses: 0xPolygon/smart-contracts-agentic-review/.github/workflows/default/ai-review.yml@main
+    uses: 0xPolygon/smart-contracts-agentic-review/.github/workflows/default.yml@main
     permissions:
       contents: read
       pull-requests: write
@@ -52,19 +71,19 @@ jobs:
     secrets: inherit
 ```
 
-That's it. No other files needed in the consuming repo for the review
-to work.
+That's the entire per-repo setup. No other files are required.
 
 ## Per-repo customization
 
-Three axes of customization:
+Three axes:
 
-**1. Content customization — edit `CLAUDE.md` / `AGENTS.md` /
-`README.md` in the consuming repo.** Optional. If they exist, the
-agents read them.
+**1. Review content — edit `CLAUDE.md` / `AGENTS.md` / `README.md` in
+the consuming repo.** Optional. If they exist, the agents read them
+and use them to inform the review. They're repository-context files,
+not CI configuration.
 
-**2. Workflow customization — pass `with:` inputs in the stub.**
-Available inputs:
+**2. Workflow behavior — pass `with:` inputs in the stub.** Available
+inputs (from `default.yml`):
 
 | Input             | Default           | Purpose                     |
 | ----------------- | ----------------- | --------------------------- |
@@ -75,10 +94,9 @@ Available inputs:
 | `run-claude`      | `true`            | Enable Claude reviewer      |
 | `run-codex`       | `true`            | Enable Codex reviewer       |
 
-**3. Switching setups — change which folder the stub points at.** To
-use a specialized setup (future), change
-`.../default/ai-review.yml@main` to `.../zk-circuits/ai-review.yml@main`
-or whatever the setup folder is called.
+**3. Profile choice — change which workflow the stub calls.** For a
+future specialized profile (e.g. `audit.yml`), the consuming repo's
+stub changes `.../default.yml@main` to `.../audit.yml@main`.
 
 ## Branching model
 
@@ -93,25 +111,54 @@ Before merging `dev` → `main`, point one consuming repo's stub at your
 branch temporarily:
 
 ```yaml
-uses: 0xPolygon/smart-contracts-agentic-review/.github/workflows/default/ai-review.yml@my-feature-branch
+uses: 0xPolygon/smart-contracts-agentic-review/.github/workflows/default.yml@my-feature-branch
 ```
 
 Open a test PR there, verify, revert the stub change, merge
 `dev` → `main`.
 
-## Adding a new setup
+## Adding a new profile
 
-1. Create `.github/workflows/<setup-name>/` in this repo.
-2. Put `ai-review.yml`, `CLAUDE_PROMPT.md`, and `CODEX_PROMPT.md`
-   inside it. Start by copying `default/` and editing.
-3. Update the prompt paths inside the new `ai-review.yml` to point at
-   its own folder (search for `.github/workflows/default/` and replace
-   with `.github/workflows/<setup-name>/`).
-4. Consuming repos that want the new setup change their stub's
-   `uses:` to point at the new folder.
+1. Create `prompts/<profile-name>/CLAUDE_PROMPT.md` and
+   `prompts/<profile-name>/CODEX_PROMPT.md`. Start by copying
+   `prompts/default/` and editing.
+2. Create `.github/workflows/<profile-name>.yml`. Start by copying
+   `default.yml`. Change the `env.PROFILE` value at the top of the
+   file to `<profile-name>`. Change the Codex `prompt-file` path
+   (which is currently hardcoded) to
+   `.agentic-review/prompts/<profile-name>/CODEX_PROMPT.md`.
+3. Update the workflow's `name:` field to reflect the profile.
+4. Consuming repos that want the new profile change their stub's
+   `uses:` to point at `<profile-name>.yml` instead of `default.yml`.
+
+## Visibility
+
+This repo is **public**. The default `GITHUB_TOKEN` in consuming
+repos cannot check out other private/internal repos in the org, even
+when reusable-workflow access is enabled — the token only authorizes
+calling the workflow, not cloning the repo. Keeping this repo public
+is the simplest fix and avoids a GitHub App / PAT detour. The
+content (workflow scaffolding + prompts) is not sensitive.
 
 ## Secrets
 
-`CLAUDE_API_KEY` and `OPENAI_API_KEY` are 0xPolygon org-level secrets
-with visibility set to all repositories. Consuming repos pass them
-through with `secrets: inherit`.
+`CLAUDE_API_KEY` and `OPENAI_API_KEY` are 0xPolygon org-level
+secrets with visibility set to all repositories. Consuming repos
+pass them through with `secrets: inherit`. Rotate centrally.
+
+## Cost expectations
+
+Claude Opus 4.7: ~$0.10–0.20 per typical PR review.
+GPT-5.3-Codex: ~$0.05–0.15 per typical PR review.
+
+For ~100 PRs/month across all consuming repos, expect ~$20–35/month
+combined API spend.
+
+## What this is NOT
+
+- Not a replacement for human security review or professional audits.
+- Not a replacement for `forge fmt` / `solhint` in a separate CI job —
+  those are deterministic and cheaper. Run them too.
+- Not interactive on standalone issues — `@claude` only works in PR
+  comments and review threads (intentional; standalone-issue
+  conversations tend to be open-ended and burn API credits).
