@@ -4,7 +4,7 @@
 #
 # Prompts for this profile live in prompts/default/ in this repo.
 # A future specialized profile would be a new <profile>.yml file
-# here plus a new prompts/<profile>/ directory.
+# plus a new prompts/<profile>/ directory.
 
 name: Agentic Review (default)
 
@@ -42,8 +42,8 @@ on:
         required: false # required only when run-codex is true
 
 # Hardcoded profile — must match the prompts/<PROFILE>/ directory this
-# workflow reads from. When adding new profile workflows (audit.yml,
-# etc.), give them their own PROFILE value at the env or step level.
+# workflow reads from. New profile workflows (audit.yml, etc.) set
+# their own PROFILE value.
 env:
   PROFILE: default
 
@@ -79,15 +79,6 @@ jobs:
           ref: main
           path: .agentic-review
 
-      - name: Load Claude prompt
-        id: prompt
-        run: |
-          {
-            echo 'content<<AI_REVIEW_PROMPT_EOF'
-            cat ".agentic-review/prompts/${PROFILE}/CLAUDE_PROMPT.md"
-            echo 'AI_REVIEW_PROMPT_EOF'
-          } >> "$GITHUB_OUTPUT"
-
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
@@ -101,11 +92,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.CLAUDE_API_KEY }}
-          prompt: ${{ steps.prompt.outputs.content }}
+          prompt: "Run the PR security and quality review as instructed by the system prompt. Post inline comments for 🔴/🟡 findings and a PR-level summary. Do not reply in chat — post to the PR."
           track_progress: true
           claude_args: |
             --model ${{ inputs.claude-model }}
             --max-turns 20
+            --append-system-prompt-file .agentic-review/prompts/default/CLAUDE_PROMPT.md
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(forge build),Bash(forge test*),Bash(forge snapshot*),Bash(forge coverage*),Bash(forge inspect*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(cat CLAUDE.md),Bash(cat AGENTS.md),Bash(cat README.md),Bash(find * -name CLAUDE.md),Bash(find * -name AGENTS.md),Read,Glob,Grep"
 
   # ────────────────────────────────────────────────────────────────
@@ -146,8 +138,21 @@ jobs:
           version: ${{ inputs.foundry-version }}
 
       - name: Install Soldeer dependencies
+        # Runs BEFORE Codex so dependencies are present in the
+        # read-only sandbox. Codex's sandbox is read-only, so solc
+        # installation and other runtime fetches must be done here
+        # while the filesystem is still writable.
         if: inputs.install-soldeer
         run: forge soldeer install
+
+      - name: Pre-install solc
+        # forge build inside Codex's read-only sandbox can't download
+        # solc on first use. Warm the solc cache here by doing a
+        # build once so ~/.svm/ is populated. A failing build is
+        # non-fatal for this warm-up step — Codex will re-run it
+        # inside the sandbox and report the real failure in its
+        # review.
+        run: forge build || true
 
       - name: Run Codex
         id: codex
