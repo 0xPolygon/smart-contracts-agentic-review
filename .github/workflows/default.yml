@@ -53,9 +53,6 @@ jobs:
   #    Posts: inline comments for 🔴/🟡 + PR-level summary.
   # ────────────────────────────────────────────────────────────────
   claude-review:
-    concurrency:
-      group: claude-review-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
     name: Claude Review
     if: github.event_name == 'pull_request' && inputs.run-claude
     runs-on: ubuntu-latest
@@ -109,9 +106,6 @@ jobs:
   #    Posts: single PR-level summary comment.
   # ────────────────────────────────────────────────────────────────
   codex-review:
-    concurrency:
-      group: codex-review-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
     name: Codex review
     if: github.event_name == 'pull_request' && inputs.run-codex
     runs-on: ubuntu-latest
@@ -200,9 +194,6 @@ jobs:
   #    Gated to org members / collaborators.
   # ────────────────────────────────────────────────────────────────
   claude-assistant:
-    concurrency:
-      group: claude-assistant-${{ github.event.pull_request.number || github.run_id }}
-      cancel-in-progress: false # don't cancel mid-conversation
     name: Claude assistant
     if: |
       inputs.run-claude && (
