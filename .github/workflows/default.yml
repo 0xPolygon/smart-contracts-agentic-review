@@ -158,10 +158,7 @@ jobs:
           # Privilege control: drop sudo (default). This is the privilege
           # knob — not the sandbox knob.
           safety-strategy: drop-sudo
-          # Filesystem sandbox: workspace-write (default). Lets Codex run
-          # `forge build` / `forge test` which must write cache/ and out/.
-          # The previous 'read-only' setting (which we passed as
-          # safety-strategy) blocked these writes. Codex has no git
+          # Filesystem sandbox: workspace-write (default). Codex has no git
           # credentials to push, so workspace writes never escape the
           # runner.
           sandbox: workspace-write
