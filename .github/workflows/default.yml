@@ -47,17 +47,16 @@ on:
 env:
   PROFILE: default
 
-concurrency:
-  group: agentic-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   # ────────────────────────────────────────────────────────────────
   # 1. Claude Opus security review (fires on every PR)
   #    Posts: inline comments for 🔴/🟡 + PR-level summary.
   # ────────────────────────────────────────────────────────────────
   claude-review:
-    name: Claude security review
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    name: Claude Review
     if: github.event_name == 'pull_request' && inputs.run-claude
     runs-on: ubuntu-latest
     permissions:
@@ -65,15 +64,16 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+      actions: read
     steps:
       - name: Checkout consuming repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
           fetch-depth: 0
 
       - name: Checkout central repo (for prompts)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: 0xPolygon/smart-contracts-agentic-review
           ref: main
@@ -109,6 +109,9 @@ jobs:
   #    Posts: single PR-level summary comment.
   # ────────────────────────────────────────────────────────────────
   codex-review:
+    concurrency:
+      group: codex-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     name: Codex review
     if: github.event_name == 'pull_request' && inputs.run-codex
     runs-on: ubuntu-latest
@@ -116,6 +119,7 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
+      actions: read
     steps:
       - name: Checkout consuming repo (PR merge ref)
         uses: actions/checkout@v5
@@ -130,7 +134,7 @@ jobs:
             "+refs/pull/${{ github.event.pull_request.number }}/head"
 
       - name: Checkout central repo (for prompts)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: 0xPolygon/smart-contracts-agentic-review
           ref: main
@@ -196,6 +200,9 @@ jobs:
   #    Gated to org members / collaborators.
   # ────────────────────────────────────────────────────────────────
   claude-assistant:
+    concurrency:
+      group: claude-assistant-${{ github.event.pull_request.number || github.run_id }}
+      cancel-in-progress: false # don't cancel mid-conversation
     name: Claude assistant
     if: |
       inputs.run-claude && (
@@ -216,9 +223,10 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+      actions: read
     steps:
       - name: Checkout consuming repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
           fetch-depth: 1
