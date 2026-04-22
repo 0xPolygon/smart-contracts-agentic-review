@@ -92,7 +92,7 @@ Available inputs (from `default.yml`):
 | ----------------- | ----------------- | --------------------------- |
 | `foundry-version` | `nightly`         | Foundry release tag         |
 | `install-soldeer` | `true`            | Run `forge soldeer install` |
-| `claude-model`    | `claude-opus-4.7` | Claude model identifier     |
+| `claude-model`    | `claude-opus-4-7` | Claude model identifier     |
 | `codex-model`     | `gpt-5.3-codex`   | Codex model identifier      |
 | `run-claude`      | `true`            | Enable Claude reviewer      |
 | `run-codex`       | `true`            | Enable Codex reviewer       |

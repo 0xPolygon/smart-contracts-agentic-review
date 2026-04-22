@@ -22,7 +22,7 @@ on:
       claude-model:
         description: "Claude model identifier (passed as --model in claude_args)"
         type: string
-        default: "claude-opus-4.7"
+        default: "claude-opus-4-7"
       codex-model:
         description: "Codex model identifier"
         type: string
@@ -88,6 +88,10 @@ jobs:
         if: inputs.install-soldeer
         run: forge soldeer install
 
+      - name: Compile contracts
+        if: inputs.install-soldeer
+        run: forge build || true
+
       - name: Run Claude
         uses: anthropics/claude-code-action@v1
         with:
@@ -136,6 +140,14 @@ jobs:
         uses: foundry-rs/foundry-toolchain@v1
         with:
           version: ${{ inputs.foundry-version }}
+
+      - name: Install Soldeer dependencies
+        if: inputs.install-soldeer
+        run: forge soldeer install
+
+      - name: Compile contracts
+        if: inputs.install-soldeer
+        run: forge build || true
 
       - name: Run Codex
         id: codex
@@ -222,6 +234,10 @@ jobs:
       - name: Install Soldeer dependencies
         if: inputs.install-soldeer
         run: forge soldeer install
+
+      - name: Compile contracts
+        if: inputs.install-soldeer
+        run: forge build || true
 
       - name: Run Claude
         uses: anthropics/claude-code-action@v1
