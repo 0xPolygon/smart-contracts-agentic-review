@@ -1,6 +1,6 @@
 # The default reusable workflow for 0xPolygon Solidity repos. Every
-# Solidity repo calls this via a thin stub. Improvements here ship to
-# every repo on its next PR (after dev → main).
+# Solidity repo calls this via a thin stub. Improvements here ship
+# to every repo on its next PR (after dev → main).
 #
 # Prompts for this profile live in prompts/default/ in this repo.
 # A future specialized profile would be a new <profile>.yml file
@@ -137,30 +137,22 @@ jobs:
         with:
           version: ${{ inputs.foundry-version }}
 
-      - name: Install Soldeer dependencies
-        # Runs BEFORE Codex so dependencies are present in the
-        # read-only sandbox. Codex's sandbox is read-only, so solc
-        # installation and other runtime fetches must be done here
-        # while the filesystem is still writable.
-        if: inputs.install-soldeer
-        run: forge soldeer install
-
-      - name: Pre-install solc
-        # forge build inside Codex's read-only sandbox can't download
-        # solc on first use. Warm the solc cache here by doing a
-        # build once so ~/.svm/ is populated. A failing build is
-        # non-fatal for this warm-up step — Codex will re-run it
-        # inside the sandbox and report the real failure in its
-        # review.
-        run: forge build || true
-
       - name: Run Codex
         id: codex
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: ${{ inputs.codex-model }}
-          safety-strategy: read-only
+          # Privilege control: drop sudo (default). This is the privilege
+          # knob — not the sandbox knob.
+          safety-strategy: drop-sudo
+          # Filesystem sandbox: workspace-write (default). Lets Codex run
+          # `forge build` / `forge test` which must write cache/ and out/.
+          # The previous 'read-only' setting (which we passed as
+          # safety-strategy) blocked these writes. Codex has no git
+          # credentials to push, so workspace writes never escape the
+          # runner.
+          sandbox: workspace-write
           prompt-file: .agentic-review/prompts/default/CODEX_PROMPT.md
 
       - name: Post Codex review

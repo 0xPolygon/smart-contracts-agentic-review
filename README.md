@@ -1,8 +1,9 @@
-# Smart Contracts Agentic Review
+# Smart Contracts: Agentic Review
 
 Centralized agentic PR review for Solidity / Foundry repositories in
-the 0xPolygon organization. Every Solidity repo calls a workflow here
-via a thin stub. Improvements here ship to every repo on its next PR.
+the 0xPolygon organization. Every Solidity repo calls a workflow
+here via a thin stub. Improvements here ship to every repo on its
+next PR.
 
 On every PR opened in a consuming repo:
 
@@ -18,9 +19,11 @@ Additionally, any team member can write `@claude <question>` in a PR
 comment or review to get an interactive, read-only response from
 Claude with full `forge` / `git` / `gh` access.
 
-Both agents run **read-only** — they cannot push commits or modify
-the repo. Codex is fire-once per PR (no `@codex` interactivity in
-this setup).
+Both agents are instructed to produce reviews, not edits. Claude
+Code runs with a read-only tool set (no `Edit`/`Write`/`git push`).
+Codex runs with a `workspace-write` sandbox (needed so `forge build`
+can write `cache/` and `out/`) but has no git credentials, so any
+workspace changes are ephemeral.
 
 ## Repository structure
 
@@ -35,10 +38,10 @@ smart-contracts-agentic-review/
         └── CODEX_PROMPT.md
 ```
 
-Each **profile** is a pair consisting of a workflow file
-(`.github/workflows/<profile>.yml`) and a prompts directory
-(`prompts/<profile>/`). The workflow file hardcodes which profile it
-uses via the top-level `env.PROFILE`.
+Each **profile** is a pair: a workflow file
+(`.github/workflows/<profile>.yml`) plus a prompts directory
+(`prompts/<profile>/`). The workflow file hardcodes which profile
+it uses via the top-level `env.PROFILE`.
 
 GitHub Actions only discovers workflow files at the top level of
 `.github/workflows/`, so workflow files cannot be nested into
@@ -47,10 +50,10 @@ under `prompts/`.
 
 ## How a consuming repo uses this
 
-Drop this stub at `.github/workflows/ai-review-stub.yml`:
+Drop this stub at `.github/workflows/agentic-review-stub.yml`:
 
 ```yaml
-name: AI Review
+name: Agentic Review Stub
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -77,13 +80,13 @@ That's the entire per-repo setup. No other files are required.
 
 Three axes:
 
-**1. Review content — edit `CLAUDE.md` / `AGENTS.md` / `README.md` in
-the consuming repo.** Optional. If they exist, the agents read them
-and use them to inform the review. They're repository-context files,
-not CI configuration.
+**1. Review content — edit `CLAUDE.md` / `AGENTS.md` / `README.md`
+in the consuming repo.** Optional. If they exist, the agents read
+them and use them to inform the review. They're repository-context
+files, not CI configuration.
 
-**2. Workflow behavior — pass `with:` inputs in the stub.** Available
-inputs (from `default.yml`):
+**2. Workflow behavior — pass `with:` inputs in the stub.**
+Available inputs (from `default.yml`):
 
 | Input             | Default           | Purpose                     |
 | ----------------- | ----------------- | --------------------------- |
@@ -101,9 +104,9 @@ stub changes `.../default.yml@main` to `.../audit.yml@main`.
 ## Branching model
 
 - `dev` — open all PRs here. Test changes.
-- `main` — protected. Only merges from `dev` with required approvals.
-  Stubs in consuming repos point at `@main`, so anything landing here
-  goes live everywhere on the next PR.
+- `main` — protected. Only merges from `dev` with required
+  approvals. Stubs in consuming repos point at `@main`, so anything
+  landing here goes live everywhere on the next PR.
 
 ### Testing changes before merge
 
@@ -134,11 +137,10 @@ Open a test PR there, verify, revert the stub change, merge
 ## Visibility
 
 This repo is **public**. The default `GITHUB_TOKEN` in consuming
-repos cannot check out other private/internal repos in the org, even
-when reusable-workflow access is enabled — the token only authorizes
-calling the workflow, not cloning the repo. Keeping this repo public
-is the simplest fix and avoids a GitHub App / PAT detour. The
-content (workflow scaffolding + prompts) is not sensitive.
+repos cannot check out other private/internal repos in the org,
+even when reusable-workflow access is enabled. Keeping this repo
+public sidesteps the GitHub App / PAT detour. The content
+(workflow scaffolding + prompts) is not sensitive.
 
 ## Prompt delivery mechanism
 
@@ -154,6 +156,25 @@ This sidesteps the fragile pattern of reading a file into a bash
 variable and passing it through `$GITHUB_OUTPUT`, which fails when
 prompt content happens to match the heredoc delimiter or contains
 sequences the GitHub runner interprets specially.
+
+## Codex sandbox configuration
+
+The Codex action has two orthogonal knobs that are easy to confuse:
+
+- **`safety-strategy`** controls privilege: `drop-sudo` (default,
+  recommended), `unprivileged-user`, `read-only`, `unsafe`. This is
+  about sudo and the user identity Codex runs as — not about
+  filesystem writability.
+- **`sandbox`** controls filesystem access: `workspace-write`
+  (default), `read-only`, `danger-full-access`.
+
+For a review workflow that runs `forge build` and `forge test`, you
+need `sandbox: workspace-write` because those commands write
+`cache/` and `out/` in the workspace. If you mistakenly set
+`safety-strategy: read-only` thinking it's the sandbox knob (easy
+mistake — the name is misleading), Codex can't run the build and
+all findings will be annotated with "build could not run due to
+read-only filesystem".
 
 ## Secrets
 
@@ -171,9 +192,10 @@ combined API spend.
 
 ## What this is NOT
 
-- Not a replacement for human security review or professional audits.
-- Not a replacement for `forge fmt` / `solhint` in a separate CI job —
-  those are deterministic and cheaper. Run them too.
+- Not a replacement for human security review or professional
+  audits.
+- Not a replacement for `forge fmt` in a separate CI
+  job — those are deterministic and cheaper. Run them too.
 - Not interactive on standalone issues — `@claude` only works in PR
   comments and review threads (intentional; standalone-issue
   conversations tend to be open-ended and burn API credits).
