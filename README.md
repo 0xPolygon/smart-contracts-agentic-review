@@ -71,6 +71,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+      actions: read
     secrets: inherit
 ```
 
