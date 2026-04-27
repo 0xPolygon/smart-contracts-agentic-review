@@ -200,3 +200,11 @@ combined API spend.
 - Not interactive on standalone issues — `@claude` only works in PR
   comments and review threads (intentional; standalone-issue
   conversations tend to be open-ended and burn API credits).
+
+## License
+
+This codebase is licensed under Source Available License.
+
+See [`LICENSE.txt`](./LICENSE.txt).
+
+Your use of this software constitutes acceptance of these license terms.
