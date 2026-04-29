@@ -1,12 +1,11 @@
-# The default reusable workflow for 0xPolygon Solidity repos. Every
-# Solidity repo calls this via a thin stub. Improvements here ship
-# to every repo on its next PR (after dev → main).
+# The default reusable workflow for 0xPolygon Solidity repos. The
+# environment here is Foundry + Soldeer + Bun. Improvements ship to
+# every consuming repo on its next PR (after dev → main).
 #
-# Prompts for this profile live in prompts/default/ in this repo.
-# A future specialized profile would be a new <profile>.yml file
-# plus a new prompts/<profile>/ directory.
+# Each consuming repo selects which agent to run on each AI via the
+# claude-agent / codex-agent inputs. Both default to "general".
 
-name: Agentic Review (default)
+name: Agentic Review (Default)
 
 on:
   workflow_call:
@@ -20,43 +19,44 @@ on:
         type: boolean
         default: true
       claude-model:
-        description: "Claude model identifier (passed as --model in claude_args)"
+        description: "Claude model identifier"
         type: string
         default: "claude-opus-4-7"
       codex-model:
         description: "Codex model identifier"
         type: string
         default: "gpt-5.3-codex"
+      claude-agent:
+        description: "Agent folder for Claude (under agents/)"
+        type: string
+        default: "general"
+      codex-agent:
+        description: "Agent folder for Codex (under agents/)"
+        type: string
+        default: "general"
       run-claude:
-        description: "Enable the Claude reviewer"
+        description: "Enable the Claude agent"
         type: boolean
         default: true
       run-codex:
-        description: "Enable the Codex reviewer"
+        description: "Enable the Codex agent"
         type: boolean
         default: true
     secrets:
       CLAUDE_API_KEY:
-        required: false # required only when run-claude is true
+        required: false
       OPENAI_API_KEY:
-        required: false # required only when run-codex is true
-
-# Hardcoded profile — must match the prompts/<PROFILE>/ directory this
-# workflow reads from. New profile workflows (audit.yml, etc.) set
-# their own PROFILE value.
-env:
-  PROFILE: default
+        required: false
 
 jobs:
   # ────────────────────────────────────────────────────────────────
-  # 1. Claude Opus security review (fires on every PR)
-  #    Posts: inline comments for 🔴/🟡 + PR-level summary.
+  # 1. Claude Agent
   # ────────────────────────────────────────────────────────────────
-  claude-review:
+  claude-agent:
     concurrency:
-      group: claude-review-${{ github.event.pull_request.number }}
+      group: claude-agent-${{ github.event.pull_request.number }}
       cancel-in-progress: true
-    name: Claude Review
+    name: Claude ${{ inputs.claude-agent }} Agent
     if: github.event_name == 'pull_request' && inputs.run-claude
     runs-on: ubuntu-latest
     permissions:
@@ -79,6 +79,15 @@ jobs:
           ref: main
           path: .agentic-review
 
+      - name: Verify Claude agent prompt exists
+        run: |
+          path=".agentic-review/agents/${{ inputs.claude-agent }}/CLAUDE_PROMPT.md"
+          if [ ! -f "$path" ]; then
+            echo "::error::Claude agent prompt not found: $path"
+            echo "::error::Expected file at agents/${{ inputs.claude-agent }}/CLAUDE_PROMPT.md in the central repo."
+            exit 1
+          fi
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
@@ -94,25 +103,29 @@ jobs:
 
       - name: Run Claude
         uses: anthropics/claude-code-action@v1
+        env:
+          AGENT_NAME: ${{ inputs.claude-agent }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         with:
           anthropic_api_key: ${{ secrets.CLAUDE_API_KEY }}
-          prompt: "Run the PR security and quality review as instructed by the system prompt. Post inline comments for 🔴/🟡 findings and a PR-level summary. Do not reply in chat — post to the PR."
+          prompt: "Run the PR security review as instructed by your system prompt. Post inline comments for 🔴/🟡 findings and a single PR-level summary using the exact header and Report format defined in your system prompt. Do not reply in chat — post to the PR."
           track_progress: true
           claude_args: |
             --model ${{ inputs.claude-model }}
-            --max-turns 20
-            --append-system-prompt-file .agentic-review/prompts/default/CLAUDE_PROMPT.md
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(forge build),Bash(forge test*),Bash(forge snapshot*),Bash(forge coverage*),Bash(forge inspect*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(cat CLAUDE.md),Bash(cat AGENTS.md),Bash(cat README.md),Bash(find * -name CLAUDE.md),Bash(find * -name AGENTS.md),Read,Glob,Grep"
+            --max-turns 30
+            --append-system-prompt-file .agentic-review/agents/${{ inputs.claude-agent }}/CLAUDE_PROMPT.md
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(forge build),Bash(forge test*),Bash(forge coverage*),Bash(forge inspect*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(cat CLAUDE.md),Bash(cat AGENTS.md),Bash(cat README.md),Bash(find * -name CLAUDE.md),Bash(find * -name AGENTS.md),Read,Glob,Grep"
 
   # ────────────────────────────────────────────────────────────────
-  # 2. Codex automated review (fires on every PR)
-  #    Posts: single PR-level summary comment.
+  # 2. Codex Agent
   # ────────────────────────────────────────────────────────────────
-  codex-review:
+  codex-agent:
     concurrency:
-      group: codex-review-${{ github.event.pull_request.number }}
+      group: codex-agent-${{ github.event.pull_request.number }}
       cancel-in-progress: true
-    name: Codex review
+    name: Codex ${{ inputs.codex-agent }} Agent
     if: github.event_name == 'pull_request' && inputs.run-codex
     runs-on: ubuntu-latest
     permissions:
@@ -140,6 +153,15 @@ jobs:
           ref: main
           path: .agentic-review
 
+      - name: Verify Codex agent prompt exists
+        run: |
+          path=".agentic-review/agents/${{ inputs.codex-agent }}/CODEX_PROMPT.md"
+          if [ ! -f "$path" ]; then
+            echo "::error::Codex agent prompt not found: $path"
+            echo "::error::Expected file at agents/${{ inputs.codex-agent }}/CODEX_PROMPT.md in the central repo."
+            exit 1
+          fi
+
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
@@ -156,17 +178,17 @@ jobs:
       - name: Run Codex
         id: codex
         uses: openai/codex-action@v1
+        env:
+          AGENT_NAME: ${{ inputs.codex-agent }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           model: ${{ inputs.codex-model }}
-          # Privilege control: drop sudo (default). This is the privilege
-          # knob — not the sandbox knob.
           safety-strategy: drop-sudo
-          # Filesystem sandbox: workspace-write (default). Codex has no git
-          # credentials to push, so workspace writes never escape the
-          # runner.
           sandbox: workspace-write
-          prompt-file: .agentic-review/prompts/default/CODEX_PROMPT.md
+          prompt-file: .agentic-review/agents/${{ inputs.codex-agent }}/CODEX_PROMPT.md
 
       - name: Post Codex review
         if: steps.codex.outputs.final-message != ''
@@ -176,15 +198,17 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MODEL: ${{ inputs.codex-model }}
+          AGENT_NAME: ${{ inputs.codex-agent }}
         with:
           github-token: ${{ github.token }}
           script: |
             const baseShort = process.env.BASE_SHA.slice(0, 7);
             const headShort = process.env.HEAD_SHA.slice(0, 7);
+            const agent = process.env.AGENT_NAME.charAt(0).toUpperCase() + process.env.AGENT_NAME.slice(1);
             const body = [
-              '## 🤖 Codex review',
+              `# 🤖 Codex ${agent} Agent`,
               '',
-              `_Model: \`${process.env.MODEL}\` · base \`${baseShort}\` → head \`${headShort}\`_`,
+              `Model: \`${process.env.MODEL}\` Base: \`${baseShort}\` Head: \`${headShort}\``,
               '',
               process.env.REVIEW_BODY,
             ].join('\n');
@@ -196,14 +220,13 @@ jobs:
             });
 
   # ────────────────────────────────────────────────────────────────
-  # 3. Interactive @claude assistant (read-only, fires on @claude)
-  #    Gated to org members / collaborators.
+  # 3. Interactive @claude Assistant
   # ────────────────────────────────────────────────────────────────
   claude-assistant:
     concurrency:
       group: claude-assistant-${{ github.event.pull_request.number || github.run_id }}
-      cancel-in-progress: false # don't cancel mid-conversation
-    name: Claude assistant
+      cancel-in-progress: false
+    name: Claude Assistant
     if: |
       inputs.run-claude && (
         (github.event_name == 'issue_comment'
@@ -251,4 +274,4 @@ jobs:
           claude_args: |
             --model ${{ inputs.claude-model }}
             --max-turns 20
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(forge build),Bash(forge test*),Bash(forge snapshot*),Bash(forge coverage*),Bash(forge inspect*),Bash(git diff*),Bash(git log*),Bash(git show*),Read,Glob,Grep"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(forge build),Bash(forge test*),Bash(forge coverage*),Bash(forge inspect*),Bash(git diff*),Bash(git log*),Bash(git show*),Read,Glob,Grep"

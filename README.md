@@ -1,29 +1,26 @@
-# Smart Contracts: Agentic Review
+# Smart Contracts Agentic Review
 
 Centralized agentic PR review for Solidity / Foundry repositories in
 the 0xPolygon organization. Every Solidity repo calls a workflow
-here via a thin stub. Improvements here ship to every repo on its
-next PR.
+here via a thin stub. Improvements ship to every repo on its next
+PR.
 
-On every PR opened in a consuming repo:
+## Concept
 
-1. **Claude Opus 4.7** runs a deep security and gas review. Posts
-   inline comments on specific diff lines for 🔴/🟡 findings, plus a
-   PR-level summary with build/test status, severity counts, and
-   🟢/📝/⛽ sections.
-2. **GPT-5.3-Codex** runs an independent diff-focused review in
-   parallel. Posts a single PR-level summary comment with P0/P1
-   findings and `path/File.sol:LINE` citations.
+The system separates **environment** (how the runner is set up) from
+**agent** (what the AI is told to look for). Each consuming repo
+picks both:
 
-Additionally, any team member can write `@claude <question>` in a PR
-comment or review to get an interactive, read-only response from
-Claude with full `forge` / `git` / `gh` access.
+- **Workflow** — picks the environment. `default.yml` provides
+  Foundry + Soldeer + Bun. Future workflows (e.g. `legacy.yml`)
+  could provide alternative toolchains.
+- **Agent** — picks the review specialty. `general` is the default
+  elite Solidity security reviewer. Future agents might specialize
+  in LayerZero integrations, ERC-4626 vaults, governance audits, etc.
 
-Both agents are instructed to produce reviews, not edits. Claude
-Code runs with a read-only tool set (no `Edit`/`Write`/`git push`).
-Codex runs with a `workspace-write` sandbox (needed so `forge build`
-can write `cache/` and `out/`) but has no git credentials, so any
-workspace changes are ephemeral.
+A consuming repo's stub calls a workflow and (optionally) selects a
+non-default agent for Claude and/or Codex. Both AIs always run; they
+just point at potentially different prompts.
 
 ## Repository structure
 
@@ -31,26 +28,20 @@ workspace changes are ephemeral.
 smart-contracts-agentic-review/
 ├── README.md
 ├── .github/workflows/
-│   └── default.yml                 ← reusable workflow for the default profile
-└── prompts/
-    └── default/                    ← prompts for the default profile
+│   └── default.yml             ← Foundry + Soldeer + Bun environment
+└── agents/
+    └── general/                ← elite generic security review
         ├── CLAUDE_PROMPT.md
         └── CODEX_PROMPT.md
 ```
 
-Each **profile** is a pair: a workflow file
-(`.github/workflows/<profile>.yml`) plus a prompts directory
-(`prompts/<profile>/`). The workflow file hardcodes which profile
-it uses via the top-level `env.PROFILE`.
-
 GitHub Actions only discovers workflow files at the top level of
-`.github/workflows/`, so workflow files cannot be nested into
-subfolders. Prompt directories, however, are free to be organized
-under `prompts/`.
+`.github/workflows/`, so workflows are flat. Agent directories under
+`agents/` can be organized freely.
 
-## How a consuming repo uses this
+## Stub for a consuming repo
 
-Drop this stub at `.github/workflows/agentic-review-stub.yml`:
+`.github/workflows/agentic-review-stub.yml`:
 
 ```yaml
 name: Agentic Review Stub
@@ -70,136 +61,137 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
       actions: read
     secrets: inherit
 ```
 
-That's the entire per-repo setup. No other files are required.
+That runs `general` on both Claude and Codex. To change the agent on
+either or both:
 
-## Per-repo customization
+```yaml
+    with:
+      claude-agent: "layerzero"   # use the layerzero agent for Claude
+      codex-agent: "general"      # keep general on Codex
+```
+
+If `agents/<name>/CLAUDE_PROMPT.md` (or `CODEX_PROMPT.md`) doesn't
+exist, that AI's job fails fast with a clear error. The other AI
+still runs.
+
+## Available inputs
+
+| Input             | Default           | Purpose                           |
+| ----------------- | ----------------- | --------------------------------- |
+| `foundry-version` | `nightly`         | Foundry release tag               |
+| `install-soldeer` | `true`            | Run `forge soldeer install`       |
+| `claude-model`    | `claude-opus-4-7` | Claude model identifier           |
+| `codex-model`     | `gpt-5.3-codex`   | Codex model identifier            |
+| `claude-agent`    | `general`         | Folder under `agents/` for Claude |
+| `codex-agent`     | `general`         | Folder under `agents/` for Codex  |
+| `run-claude`      | `true`            | Enable Claude reviewer            |
+| `run-codex`       | `true`            | Enable Codex reviewer             |
+
+## Per-repo customization (recap)
 
 Three axes:
 
-**1. Review content — edit `CLAUDE.md` / `AGENTS.md` / `README.md`
-in the consuming repo.** Optional. If they exist, the agents read
-them and use them to inform the review. They're repository-context
-files, not CI configuration.
+1. **Repo context** — drop `AGENTS.md`, `CLAUDE.md` (with
+   `@AGENTS.md` import), `README.md` in the consuming repo. The
+   agents read them. Optional but recommended.
+2. **Agent choice** — `claude-agent` / `codex-agent` inputs. Pick a
+   different specialty per AI if it makes sense.
+3. **Workflow inputs** — `foundry-version`, `install-soldeer`, etc.
 
-**2. Workflow behavior — pass `with:` inputs in the stub.**
-Available inputs (from `default.yml`):
+## What an agent looks like
 
-| Input             | Default           | Purpose                     |
-| ----------------- | ----------------- | --------------------------- |
-| `foundry-version` | `nightly`         | Foundry release tag         |
-| `install-soldeer` | `true`            | Run `forge soldeer install` |
-| `claude-model`    | `claude-opus-4-7` | Claude model identifier     |
-| `codex-model`     | `gpt-5.3-codex`   | Codex model identifier      |
-| `run-claude`      | `true`            | Enable Claude reviewer      |
-| `run-codex`       | `true`            | Enable Codex reviewer       |
+An agent is a folder under `agents/` containing:
 
-**3. Profile choice — change which workflow the stub calls.** For a
-future specialized profile (e.g. `audit.yml`), the consuming repo's
-stub changes `.../default.yml@main` to `.../audit.yml@main`.
+- `CLAUDE_PROMPT.md` — appended to Claude Code's system prompt via
+  `--append-system-prompt-file`.
+- `CODEX_PROMPT.md` — passed to the Codex action via `prompt-file`.
+
+Both prompts share methodology (Orient → Map → Verify → Hunt →
+Devil's Advocate → Report) and adversarial framing, but the Claude
+prompt also covers inline-comment posting and the summary-comment
+header format, while the Codex prompt covers terse markdown output
+that the workflow wraps with a header.
+
+## Adding a new agent
+
+1. `mkdir -p agents/<agent-name>`
+2. Create `agents/<agent-name>/CLAUDE_PROMPT.md`. Start by copying
+   `agents/general/CLAUDE_PROMPT.md` and adding/replacing the Hunt
+   categories with the agent's specialty.
+3. Create `agents/<agent-name>/CODEX_PROMPT.md` similarly. (Optional
+   — if missing, Codex jobs that try to use this agent will fail
+   fast.)
+4. PR against `dev`. After approval, merge to `main`.
+5. Consuming repos opt in by setting `claude-agent: "<agent-name>"`
+   and/or `codex-agent: "<agent-name>"` in their stub.
+
+## Adding a new workflow (environment)
+
+If a repo uses a non-Foundry-Soldeer-Bun toolchain (e.g. Hardhat,
+plain `forge install` instead of Soldeer), copy `default.yml` to
+`<env-name>.yml`, adjust the dependency-installation steps, and
+publish. Consuming repos point their stub at the new file:
+`uses: .../workflows/<env-name>.yml@main`.
+
+The agent inputs (`claude-agent`, `codex-agent`) work the same way
+across all workflows — they're independent of environment.
 
 ## Branching model
 
-- `dev` — open all PRs here. Test changes.
-- `main` — protected. Only merges from `dev` with required
-  approvals. Stubs in consuming repos point at `@main`, so anything
-  landing here goes live everywhere on the next PR.
+- `dev` — open PRs here. Test changes on a feature branch by pointing
+  one consuming repo's stub at that branch temporarily.
+- `main` — protected. Stubs in consuming repos point at `@main`.
+  Anything landing here goes live everywhere on the next PR.
 
-### Testing changes before merge
+## Why public
 
-Before merging `dev` → `main`, point one consuming repo's stub at
-your branch temporarily:
+The default `GITHUB_TOKEN` in consuming repos cannot check out other
+private/internal repos in the org, even when reusable-workflow
+access is enabled. Keeping this repo public sidesteps the
+GitHub App / PAT detour. Workflow scaffolding and agent prompts are
+not sensitive.
 
-```yaml
-uses: 0xPolygon/smart-contracts-agentic-review/.github/workflows/default.yml@my-feature-branch
-```
+## Codex sandbox configuration (heads-up)
 
-Open a test PR there, verify, revert the stub change, merge
-`dev` → `main`.
+The Codex action has two orthogonal knobs:
 
-## Adding a new profile
+- `safety-strategy` — privilege control (`drop-sudo` default).
+- `sandbox` — filesystem boundary (`workspace-write` default).
 
-1. Create `prompts/<profile-name>/CLAUDE_PROMPT.md` and
-   `prompts/<profile-name>/CODEX_PROMPT.md`. Start by copying
-   `prompts/default/` and editing.
-2. Create `.github/workflows/<profile-name>.yml`. Start by copying
-   `default.yml`. Change the `env.PROFILE` value at the top of the
-   file to `<profile-name>`. Change the Codex `prompt-file` path
-   and the Claude `--append-system-prompt-file` path to point at the
-   new profile's prompts.
-3. Update the workflow's `name:` field to reflect the profile.
-4. Consuming repos that want the new profile change their stub's
-   `uses:` to point at `<profile-name>.yml` instead of `default.yml`.
-
-## Visibility
-
-This repo is **public**. The default `GITHUB_TOKEN` in consuming
-repos cannot check out other private/internal repos in the org,
-even when reusable-workflow access is enabled. Keeping this repo
-public sidesteps the GitHub App / PAT detour. The content
-(workflow scaffolding + prompts) is not sensitive.
-
-## Prompt delivery mechanism
-
-Prompts are delivered to the agents **by file path**, never as
-inline strings:
-
-- **Claude Code** accepts `--append-system-prompt-file <path>` in
-  `claude_args`. The CLI reads the file itself.
-- **Codex action** accepts a `prompt-file` input that takes a
-  repository-relative path.
-
-This sidesteps the fragile pattern of reading a file into a bash
-variable and passing it through `$GITHUB_OUTPUT`, which fails when
-prompt content happens to match the heredoc delimiter or contains
-sequences the GitHub runner interprets specially.
-
-## Codex sandbox configuration
-
-The Codex action has two orthogonal knobs that are easy to confuse:
-
-- **`safety-strategy`** controls privilege: `drop-sudo` (default,
-  recommended), `unprivileged-user`, `read-only`, `unsafe`. This is
-  about sudo and the user identity Codex runs as — not about
-  filesystem writability.
-- **`sandbox`** controls filesystem access: `workspace-write`
-  (default), `read-only`, `danger-full-access`.
-
-For a review workflow that runs `forge build` and `forge test`, you
-need `sandbox: workspace-write` because those commands write
-`cache/` and `out/` in the workspace. If you mistakenly set
-`safety-strategy: read-only` thinking it's the sandbox knob (easy
-mistake — the name is misleading), Codex can't run the build and
-all findings will be annotated with "build could not run due to
-read-only filesystem".
+`forge build` and `forge test` need `workspace-write` because they
+write `cache/` and `out/`. The previous bug we hit:
+`safety-strategy: read-only` (privilege knob) was misread as a
+filesystem knob and blocked builds. `default.yml` now sets both
+explicitly to the correct values.
 
 ## Secrets
 
 `CLAUDE_API_KEY` and `OPENAI_API_KEY` are 0xPolygon org-level
-secrets with visibility set to all repositories. Consuming repos
-pass them through with `secrets: inherit`. Rotate centrally.
+secrets, visibility = all repositories. Consuming repos pass them
+through with `secrets: inherit`. Rotate centrally.
 
 ## Cost expectations
 
-Claude Opus 4.7: ~$0.10–0.20 per typical PR review.
-GPT-5.3-Codex: ~$0.05–0.15 per typical PR review.
+Per PR with the `general` agent on both AIs:
 
-For ~100 PRs/month across all consuming repos, expect ~$20–35/month
-combined API spend.
+- Claude Opus 4.7 with the elite prompt: ~$0.20–0.40
+- GPT-5.3-Codex: ~$0.10–0.20
+
+Combined: ~$0.30–0.60 per PR. ~100 PRs/month → $30–60/month total.
+The new prompt is more thorough than the previous one, which is the
+reason for the bump.
 
 ## What this is NOT
 
-- Not a replacement for human security review or professional
-  audits.
-- Not a replacement for `forge fmt` in a separate CI
-  job — those are deterministic and cheaper. Run them too.
-- Not interactive on standalone issues — `@claude` only works in PR
-  comments and review threads (intentional; standalone-issue
-  conversations tend to be open-ended and burn API credits).
+- Not a replacement for human security review or professional audits.
+- Not a replacement for `forge fmt` in a separate CI job — that's
+  deterministic and cheaper.
+- Not interactive on standalone issues — `@claude` works only in PR
+  comments and review threads.
 
 ## License
 
