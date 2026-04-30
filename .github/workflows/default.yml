@@ -360,12 +360,53 @@ jobs:
           PR_BASE_REF: ${{ needs.trust-gate.outputs.base_ref }}
           PR_HEAD_REF: ${{ needs.trust-gate.outputs.head_ref }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
         run: |
           set -euo pipefail
           mkdir -p .agentic-review-context
-          git fetch --no-tags origin \
-            "$PR_BASE_REF" \
-            "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER-head"
+
+          have_commit() {
+            git cat-file -e "$1^{commit}" 2>/dev/null
+          }
+
+          # Checkout credentials are intentionally not persisted. Usually the
+          # PR merge checkout with fetch-depth: 0 already contains both endpoint
+          # commits. If not, use the job-scoped GITHUB_TOKEN only for this fetch
+          # via an in-memory extraheader, so no token is written into .git/config
+          # for later AI steps to read.
+          if ! have_commit "$PR_BASE_SHA" || ! have_commit "$PR_HEAD_SHA"; then
+            auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w 0)"
+            echo "::add-mask::$auth_header"
+
+            git_fetch() {
+              git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --no-tags --no-recurse-submodules origin "$@"
+            }
+
+            if ! have_commit "$PR_BASE_SHA"; then
+              if ! git_fetch --depth=1 "$PR_BASE_SHA"; then
+                git_fetch --depth=1 "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF"
+              fi
+            fi
+
+            if ! have_commit "$PR_HEAD_SHA"; then
+              if ! git_fetch --depth=1 "$PR_HEAD_SHA"; then
+                git_fetch --depth=1 "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER-head"
+              fi
+            fi
+
+            unset auth_header
+          fi
+
+          if ! have_commit "$PR_BASE_SHA"; then
+            echo "::error::Base commit $PR_BASE_SHA is not available after context fetch."
+            exit 1
+          fi
+          if ! have_commit "$PR_HEAD_SHA"; then
+            echo "::error::Head commit $PR_HEAD_SHA is not available after context fetch."
+            exit 1
+          fi
+
           {
             echo "# PR Review Context"
             echo
@@ -554,12 +595,53 @@ jobs:
           PR_BASE_REF: ${{ needs.trust-gate.outputs.base_ref }}
           PR_HEAD_REF: ${{ needs.trust-gate.outputs.head_ref }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
         run: |
           set -euo pipefail
           mkdir -p .agentic-review-context
-          git fetch --no-tags origin \
-            "$PR_BASE_REF" \
-            "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER-head"
+
+          have_commit() {
+            git cat-file -e "$1^{commit}" 2>/dev/null
+          }
+
+          # Checkout credentials are intentionally not persisted. Usually the
+          # PR merge checkout with fetch-depth: 0 already contains both endpoint
+          # commits. If not, use the job-scoped GITHUB_TOKEN only for this fetch
+          # via an in-memory extraheader, so no token is written into .git/config
+          # for later AI steps to read.
+          if ! have_commit "$PR_BASE_SHA" || ! have_commit "$PR_HEAD_SHA"; then
+            auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w 0)"
+            echo "::add-mask::$auth_header"
+
+            git_fetch() {
+              git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --no-tags --no-recurse-submodules origin "$@"
+            }
+
+            if ! have_commit "$PR_BASE_SHA"; then
+              if ! git_fetch --depth=1 "$PR_BASE_SHA"; then
+                git_fetch --depth=1 "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF"
+              fi
+            fi
+
+            if ! have_commit "$PR_HEAD_SHA"; then
+              if ! git_fetch --depth=1 "$PR_HEAD_SHA"; then
+                git_fetch --depth=1 "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER-head"
+              fi
+            fi
+
+            unset auth_header
+          fi
+
+          if ! have_commit "$PR_BASE_SHA"; then
+            echo "::error::Base commit $PR_BASE_SHA is not available after context fetch."
+            exit 1
+          fi
+          if ! have_commit "$PR_HEAD_SHA"; then
+            echo "::error::Head commit $PR_HEAD_SHA is not available after context fetch."
+            exit 1
+          fi
+
           {
             echo "# PR Review Context"
             echo
@@ -751,12 +833,53 @@ jobs:
           PR_BASE_REF: ${{ needs.trust-gate.outputs.base_ref }}
           PR_HEAD_REF: ${{ needs.trust-gate.outputs.head_ref }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
         run: |
           set -euo pipefail
           mkdir -p .agentic-review-context
-          git fetch --no-tags origin \
-            "$PR_BASE_REF" \
-            "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER-head"
+
+          have_commit() {
+            git cat-file -e "$1^{commit}" 2>/dev/null
+          }
+
+          # Checkout credentials are intentionally not persisted. Usually the
+          # PR merge checkout with fetch-depth: 0 already contains both endpoint
+          # commits. If not, use the job-scoped GITHUB_TOKEN only for this fetch
+          # via an in-memory extraheader, so no token is written into .git/config
+          # for later AI steps to read.
+          if ! have_commit "$PR_BASE_SHA" || ! have_commit "$PR_HEAD_SHA"; then
+            auth_header="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w 0)"
+            echo "::add-mask::$auth_header"
+
+            git_fetch() {
+              git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --no-tags --no-recurse-submodules origin "$@"
+            }
+
+            if ! have_commit "$PR_BASE_SHA"; then
+              if ! git_fetch --depth=1 "$PR_BASE_SHA"; then
+                git_fetch --depth=1 "+refs/heads/$PR_BASE_REF:refs/remotes/origin/$PR_BASE_REF"
+              fi
+            fi
+
+            if ! have_commit "$PR_HEAD_SHA"; then
+              if ! git_fetch --depth=1 "$PR_HEAD_SHA"; then
+                git_fetch --depth=1 "+refs/pull/$PR_NUMBER/head:refs/remotes/origin/pr-$PR_NUMBER-head"
+              fi
+            fi
+
+            unset auth_header
+          fi
+
+          if ! have_commit "$PR_BASE_SHA"; then
+            echo "::error::Base commit $PR_BASE_SHA is not available after context fetch."
+            exit 1
+          fi
+          if ! have_commit "$PR_HEAD_SHA"; then
+            echo "::error::Head commit $PR_HEAD_SHA is not available after context fetch."
+            exit 1
+          fi
+
           {
             echo "# PR Review Context"
             echo
