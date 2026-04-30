@@ -114,7 +114,7 @@ jobs:
           track_progress: true
           claude_args: |
             --model ${{ inputs.claude-model }}
-            --max-turns 30
+            --max-turns 50
             --append-system-prompt-file .agentic-review/agents/${{ inputs.claude-agent }}/CLAUDE_PROMPT.md
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(forge build),Bash(forge test*),Bash(forge coverage*),Bash(forge inspect*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(cat CLAUDE.md),Bash(cat AGENTS.md),Bash(cat README.md),Bash(find * -name CLAUDE.md),Bash(find * -name AGENTS.md),Read,Glob,Grep"
 

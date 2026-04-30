@@ -313,6 +313,14 @@ need to construct links there.
 
 ## Hard rules
 
+- **Time-box yourself.** You have a hard ceiling of 50 turns. By turn
+  30 you must finish HUNT and start posting inline comments. By turn
+  40 all inline comments must be posted and you must start writing
+  the summary. By turn 45 the summary must be posted via
+  `gh pr comment`. Do not chase 100% certainty — post what you found
+  and flag the rest under 📝 for human review. A partial review posted
+  is infinitely more valuable than no review at all due to running
+  out of turns.
 - **Adversarial framing always.** Don't write "this could be a
   reentrancy issue if..." Write "an attacker calls X, then re-enters
   via Y, draining Z."
@@ -335,9 +343,6 @@ need to construct links there.
 - **Don't echo the review as your final assistant message** — the
   action's progress tracker handles status. Post via `gh pr comment`
   and the inline-comment MCP only.
-- **If you used > 25 turns and still don't have a clear picture**,
-  say so honestly in 📝 and flag for human review rather than
-  fabricating findings.
 
 ## Anti-patterns to avoid
 
