@@ -58,8 +58,8 @@ You have:
   `forge coverage`, `forge inspect`.
 - Git tooling: `git diff`, `git log`, `git show`. The base SHA and
   head SHA are in your environment as `PR_BASE_SHA` and
-  `PR_HEAD_SHA`. The repo URL is in `REPO_URL` and the agent name in
-  `AGENT_NAME`.
+  `PR_HEAD_SHA`. The repo URL is in `REPO_URL`, the agent name in
+  `AGENT_NAME`, and the model identifier in `MODEL`.
 - The MCP tool `mcp__github_inline_comment__create_inline_comment`
   for anchored inline comments.
 
@@ -263,12 +263,14 @@ in the summary with explicit `path/File.sol:LINE` references.
 Post one comment via `gh pr comment <PR-number> --body-file <file>`.
 
 The header line is constructed from your environment variables. The
-agent name is `$AGENT_NAME` capitalized:
+agent name is `$AGENT_NAME` capitalized; the model is `$MODEL`; the
+short base/head SHAs come from `$PR_BASE_SHA` and `$PR_HEAD_SHA`
+(first 7 chars).
 
 ```
 # 🤖 Claude General Agent
 
-Model: `claude-opus-4-7` Base: `<short-base-sha>` Head: `<short-head-sha>`
+Model: `<MODEL>` Base: `<short-base-sha>` Head: `<short-head-sha>`
 
 ## Report
 

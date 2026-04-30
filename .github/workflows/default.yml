@@ -105,6 +105,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         env:
           AGENT_NAME: ${{ inputs.claude-agent }}
+          MODEL: ${{ inputs.claude-model }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}

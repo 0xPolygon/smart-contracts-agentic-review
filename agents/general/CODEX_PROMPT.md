@@ -49,8 +49,16 @@ pleasantries.
    violation.
 4. Build and test: `forge build && forge test`. Failure = first
    finding.
-5. Hunt across the categories below. Use them as memory aids, not as
-   a list to mechanically iterate.
+5. Map every changed external/public function in the diff. List
+   them mentally before you start hunting. You will sweep each one.
+6. Hunt across the categories below. **For every changed function,
+   walk the full Hunt category list — not just the categories that
+   look obvious. Finding one strong issue does NOT mean you stop
+   looking.** A 200-line PR can easily have five severity-rated
+   findings across different categories; report all of them. The
+   bar is "does this category, applied to this function, surface a
+   concrete attack?" — apply independently per (function, category)
+   pair.
 
 ## Hunt categories
 
@@ -206,7 +214,8 @@ and `PR_HEAD_SHA=abc1234`:
   specific line in the diff, you don't have a finding.
 - **Don't write the agent header.** The workflow does that. Start
   your output with `## Report`.
-- **Stay under ~400 words** unless the finding count genuinely
-  demands more.
 - **You can write to the workspace** but **don't modify source
   files** — your role is review, not editing.
+- **No length cap on the review.** List every confirmed finding.
+  If you find five P1s across different categories, file all five.
+  Word count is whatever the findings need — don't truncate.
