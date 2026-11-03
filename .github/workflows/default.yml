@@ -102,7 +102,7 @@ jobs:
         run: forge build || true
 
       - name: Run Claude
-        uses: anthropics/claude-code-action@8cf3482550831fb35a4fc3fbf7ca139cf8028b4c # v1.0.233
+        uses: anthropics/claude-code-action@4845bacbb38b3c4b15d948f035349786f678e068 # v1.0.267
         env:
           AGENT_NAME: ${{ inputs.claude-agent }}
           MODEL: ${{ inputs.claude-model }}
@@ -269,7 +269,7 @@ jobs:
         run: forge build || true
 
       - name: Run Claude
-        uses: anthropics/claude-code-action@8cf3482550831fb35a4fc3fbf7ca139cf8028b4c # v1.0.233
+        uses: anthropics/claude-code-action@4845bacbb38b3c4b15d948f035349786f678e068 # v1.0.267
         with:
           anthropic_api_key: ${{ secrets.CLAUDE_API_KEY }}
           claude_args: |
